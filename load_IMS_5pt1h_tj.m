@@ -22,7 +22,7 @@
 % (tracking case).
 
 % clear
-simulink_fname = 'ims_Build5pt1g_tj';
+simulink_fname = 'ims_Build5pt1h_tj';
 fprintf("\n<-- Loading End-to-end simulation variables ->\n|-\tVersion:%s\t-|\n",simulink_fname);
 
 %% General settings
@@ -58,18 +58,11 @@ m2_pos_en = 0;	% [bool] M2 Positioner control loop
 % Model folder
 switch sZa
     case '00'
-        ModelFolder = fullfile(im.lfFolder,"20220611_1945_MT_mount_zen_00_m1HFN_FSM_");
+        ModelFolder = fullfile(im.lfFolder,"2023XXXX_YYYY_zen_00_M1_202110_FSM_202210_Mount_202210");
         FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
     otherwise
-        % ModelFolder = fullfile(im.lfFolder,"20211103_2333_MT_mount_zen_30_m1HFN_CFD");
-        % FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
-        
-        % ModelFolder = fullfile(im.lfFolder,"20220308_1335_MT_mount_zen_30_m1HFN_FSM");
-        % FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
-        
-        ModelFolder = fullfile(im.lfFolder,"20220610_1023_MT_mount_zen_30_m1HFN_FSM_");
-        FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
-        
+        ModelFolder = fullfile(im.lfFolder,"20230126_1659_zen_30_M1_202110_FSM_202210_Mount_202210");
+        FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder_314x2860_red.mat");
 end
 
 if(~exist('FEM_IO','var') || 1)
@@ -82,9 +75,6 @@ end
 %%
 % INPUTS
 desiredInputLabels = FEM_IO.inputs_name(1:end);
-% Remove OSS_DTA_Wind_6F input to keep compatibility
-idx = strcmp(desiredInputLabels,'OSS_DTA_Wind_6F');
-if (sum(idx)), desiredInputLabels(idx) = []; end
 isDesired = zeros(size(Phim,1),1);
 modelMuxDims = zeros(1,numel(desiredInputLabels));
 
@@ -100,10 +90,7 @@ indDesInputs = find(isDesired ~= 0);
 modelMuxDims(modelMuxDims == 0) = [];
 
 % OUTPUTS
-desiredOutputLabels = FEM_IO.outputs_name(1:end-9);
-% Remove PMT_3D output to keep compatibility
-% idx = strcmp(desiredOutputLabels,'PMT_3D');
-% if (sum(idx)), desiredOutputLabels(idx) = []; end
+desiredOutputLabels = FEM_IO.outputs_name(1:end);
 
 isDesired = zeros(size(Phi,1),1);
 modelDemuxDims = zeros(1,numel(desiredOutputLabels));
