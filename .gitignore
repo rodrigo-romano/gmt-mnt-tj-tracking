@@ -1,0 +1,4 @@
+*.asv
+tj10*.mat
+*_comparison.png
+tj10*_deriv.png
