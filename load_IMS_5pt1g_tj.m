@@ -35,16 +35,16 @@ FEM_Ts = 1/1e3;
 
 
 % Zenith angle string (affects the control model for now)
-sZa = "30";
+sZa = "00";
 
 % - - - - - Simulation setting switches (0:disables) - - - - -
-dc_mismatch_comp = 0; % [bool] DC mismatch compensation flag
+dc_mismatch_comp = 1; % [bool] DC mismatch compensation flag
 
 mntFBc_en = 1;	% [bool] Mount feedback control loop switch
 en_servo = 1;   % [bool] Enable/disable mount trajectory
-az_ff_en = 0;	% [bool] Azimuth feedforward action switch      
-el_ff_en = 0;	% [bool] Elevation feedforward action switch
-gir_ff_en = 0;	% [bool] GIR feedforward action switch
+az_ff_en = 1;	% [bool] Azimuth feedforward action switch      
+el_ff_en = 1;	% [bool] Elevation feedforward action switch
+gir_ff_en = 1;	% [bool] GIR feedforward action switch
 
 m1olf_en = 0;   % [bool] M1 outer force loop switch
 
@@ -60,22 +60,15 @@ switch sZa
     case '00'
         ModelFolder = fullfile(im.lfFolder,"20220611_1945_MT_mount_zen_00_m1HFN_FSM_");
         FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
-    otherwise
-        % ModelFolder = fullfile(im.lfFolder,"20211103_2333_MT_mount_zen_30_m1HFN_CFD");
-        % FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
-        
-        % ModelFolder = fullfile(im.lfFolder,"20220308_1335_MT_mount_zen_30_m1HFN_FSM");
-        % FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
-        
+    otherwise        
         ModelFolder = fullfile(im.lfFolder,"20220610_1023_MT_mount_zen_30_m1HFN_FSM_");
         FileName = fullfile(ModelFolder,"modal_state_space_model_2ndOrder.py.mat");
-        
 end
 
 if(~exist('FEM_IO','var') || 1)
     load(FileName,'FEM_IO','Phi','Phim','eigenfrequencies','proportionalDampingVec');
     % eigenfrequencies in Hz
-    fprintf('Model from \n%s\nloaded.\n', FileName);
+    fprintf('Loadinf SS model from \n%s\n', FileName);
 end
 
 %% Pick model IOs according to inputTable and outputTables
@@ -125,7 +118,7 @@ modelDemuxDims(modelDemuxDims == 0) = [];
 %%
 % File with controller and interface parameters
 ctrl_filename = sprintf('controls_5pt1g1K_z%s_llTT_oad.mat',sZa);
-load(ctrl_filename,'m1sys','m2pos','m2pzt','tt7','mount','Hkin','fem');
+load(ctrl_filename,'m1sys','m2pos','m2pzt','tt7','mount','fem');
 
 fprintf('\nLoading the IMS controller and interface file:\n%s\n',ctrl_filename);
 
@@ -202,8 +195,9 @@ if dc_mismatch_comp
         Psi_ss = gainMatrix(indDesOutputs,indDesInputs) - K_ss;
         for i1=1:3
             for i2=1:3
-                Psi_ss(FEM_Out_ind_list(i2,1):FEM_Out_ind_list(i2,2),...
-                    FEM_In_ind_list(i1,1):FEM_In_ind_list(i1,2)) = 0;
+                Psi_ss(:,FEM_In_ind_list(i1,1):FEM_In_ind_list(i1,2)) = 0;
+%                 Psi_ss(FEM_Out_ind_list(i2,1):FEM_Out_ind_list(i2,2),...
+%                     FEM_In_ind_list(i1,1):FEM_In_ind_list(i1,2)) = 0;
             end
         end
         
@@ -229,7 +223,6 @@ else
     StaticModelFolder = [];
 end
 
-
 %% Mount trajectory profile
 %%
 if en_servo
@@ -237,6 +230,7 @@ if en_servo
     % Load ODC trajectories
     traj_ID = '101';
     sDir = '/Users/rromano/Workspace/mnt-odc/2022-12-20_ODC E2E Files';
+    fprintf('Loading tj%s from folder\n%s\n',traj_ID,sDir);
     [mTj,~,odc_az0,odc_el0,odc_gir0] = ...
         fun_loadTjData(sDir,traj_ID,FEM_Ts);
     switch 0
@@ -247,6 +241,7 @@ if en_servo
         case 1
             %  4th-order Bessel filter with 0.5Hz corner frequency
             Htjf = tf(97.4091, [1, 9.8141, 43.3429, 99.2538, 97.4091]);
+            warning('Alternative trajectory filter selected.\n');
     end
     H_tj = c2d(Htjf,FEM_Ts, 'foh');
     
@@ -264,29 +259,7 @@ else
 end
 
 % Kinematic mount motion compensation
-Hk_opt = 'sim';
-switch Hk_opt
-    case 'sim'
-        if(strcmp(sZa,"00"))
-            if ~dc_mismatch_comp
-                load('HkinAZ_00_sim','HkinAZ_00_sim','HkinAZ_00_pmt');
-                load('HkinEL_00_sim','HkinEL_00_sim','HkinEL_00_pmt');
-            else
-                load('HkinAZ_00_m1DCgComp','HkinAZ_00_sim','HkinAZ_00_pmt');
-                load('HkinEL_00_m1DCgComp','HkinEL_00_sim','HkinEL_00_pmt');
-            end
-            Hkin = [HkinAZ_00_sim, HkinEL_00_sim, zeros(84,1)];
-            Hkin_pmt = [HkinAZ_00_pmt, HkinEL_00_pmt, zeros(21,1)];
-        else
-            load('HkinAZ_sim','HkinAZ_sim');
-            load('HkinEL_sim','HkinEL_sim');
-            Hkin = [HkinAZ_sim, HkinEL_sim, zeros(84,1)];
-        end
-    otherwise
-        if ~exist('Hkin','var')
-            error('Controller file does not provide Hkin matrix')
-        end
-end
+[Hkin_m12, Hkin_pmtnodes, Hkin_hp, Hkin_fsm, Hkin_m2p] = compute_Hkin(ModelFolder);
 
 %% Load PMTs
 %%

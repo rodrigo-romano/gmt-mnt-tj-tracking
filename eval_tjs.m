@@ -1,14 +1,19 @@
 %
 % eval_tjs.m
-%
+% Script to evaluate the effect of mount trajectories on the acquired
+% image.
 
 
 %% Preamble
 %%
 % radians to mas conversion factor
 rad2mas = 1e3*(180/pi)*3600;
+% Root of the mean squared value function
+rms = @(x,dir)squeeze(sqrt(mean(x.^2,dir)));
 % Flag to recompute Hkin
-recomputeHkin = false;
+recomputeHkin = true;%false;
+% Figure number index
+figidx = 0;
 
 % ODC folder of utilities
 odc_file_folder = '/Users/rromano/Workspace/mnt-odc';
@@ -20,58 +25,58 @@ addpath(odc_base_folder);
 
 %% Load simulation data
 %%
-
+clear mountY
+% sim_label = 'za00';
 sim_label = 'za30';
-% sim_label = 'm1ofl_m2fsm';
-% sim_label = 'mount_only';
+% sim_label = 'm1ofl_m2fsm';  % M1OFL:ON, M2FSM/POS:ON
 switch sim_label
-    case 'mount_only'
-        load("tj101_mount_only",'mount','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
-        load('HkinAZ_00_sim','HkinAZ_00_sim','HkinAZ_00_pmt');
-        load('HkinEL_00_sim','HkinEL_00_sim','HkinEL_00_pmt');
-%         Hkin = [HkinAZ_00_sim, HkinEL_00_sim, zeros(84,1)];
-%         Hkin_pmt = [HkinAZ_00_pmt, HkinEL_00_pmt, zeros(21,1)];
     case 'm1ofl_m2fsm'
-        load("tj101_m1ofl_m2fsm",'mount','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
-        load('HkinAZ_00_m1DCgComp','HkinAZ_00_sim','HkinAZ_00_pmt');
-        load('HkinEL_00_m1DCgComp','HkinEL_00_sim','HkinEL_00_pmt');
-%         Hkin = [HkinAZ_00_sim, HkinEL_00_sim, zeros(84,1)];
-%         Hkin_pmt = [HkinAZ_00_pmt, HkinEL_00_pmt, zeros(21,1)];
+        FEM_LABEL = "20220611_1945_MT_mount_zen_00_m1HFN_FSM_";
+        load("tj101_za00_m1ofl_m2fsm.mat",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
+%         load("tj102_za00_m1ofl_m2fsm.mat",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
+    case 'za00'
+        FEM_LABEL = "20220611_1945_MT_mount_zen_00_m1HFN_FSM_";
+%         load("tj101_za00_mount_withff",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
+        load("tj102_za00_mount_noff",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
     case 'za30'
+        FEM_LABEL = "20220610_1023_MT_mount_zen_30_m1HFN_FSM_";
+        load("tj103_za30_mount_noff.mat",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
 %         load("tj101_za30_mount_noff.mat",'mount','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
+%         load("tj101_za30_mount_withff.mat",'mount','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
 %         load("tj101_za30_limnt_noff.mat",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
-        load("tj101_za30_4thbessel_noff",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
-        mount = mountY;
-        load("Hkin_z30","Hkin_m12_z30","Hkin_pmt_z30");
-%         Hkin = Hkin_m12_z30;
-%         Hkin_pmt = Hkin_pmt_z30;
+%         load("tj101_za30_4thbessel_noff",'mountY','PMT1_DT','PMT2_DT','M1rbm','M2rbm');
+end
+
+try mount = mountY;
+catch, fprintf('Variable mountY is not available!\n');
 end
 
 
 %% Load PMTs
 
-% Load TT PMT (PMT1)
-fprintf("\nLoading performance matrix transformations:\n")
-pmt1_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951 Rev B',...
-    'GMT-DTA-190951_RevB_pmt1.csv');
-% pmt1_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951',...
-%     'GMT-DTA-190951_RevB_pmt1.csv');
-pmt1 = dlmread(pmt1_fname,',',[14,3,27,302]);
-if 1, fprintf("Size of PMT1:%ix%i\n",size(pmt1)); end
-
-% Load differential piston PMT (PMT2)
-pmt2_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951 Rev B',...
-    'GMT-DTA-190951_RevB_pmt2.csv');
-% pmt2_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951',...
-%     'GMT-DTA-190951_RevB_pmt2.csv');
-pmt2 = dlmread(pmt2_fname,',',[14,3,10,302]);
-if 1, fprintf("Size of PMT2:%ix%i\n",size(pmt2)); end
-
+if(~exist('pmt1','var'))
+    % Load TT PMT (PMT1)
+    fprintf("\nLoading performance matrix transformations:\n")
+    pmt1_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951 Rev B',...
+        'GMT-DTA-190951_RevB_pmt1.csv');
+    % pmt1_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951',...
+    %     'GMT-DTA-190951_RevB_pmt1.csv');
+    pmt1 = dlmread(pmt1_fname,',',[14,3,27,302]); %#ok<*DLMRD> 
+    if 1, fprintf("Size of PMT1:%ix%i\n",size(pmt1)); end
+end
+if(~exist('pmt2','var'))
+    % Load differential piston PMT (PMT2)
+    pmt2_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951 Rev B',...
+        'GMT-DTA-190951_RevB_pmt2.csv');
+    % pmt2_fname = fullfile(im.lfFolder,'PMTs','GMT-DTA-190951',...
+    %     'GMT-DTA-190951_RevB_pmt2.csv');
+    pmt2 = dlmread(pmt2_fname,',',[14,3,10,302]);
+    if 1, fprintf("Size of PMT2:%ix%i\n",size(pmt2)); end
+end
 
 %% Compute Hkin
 if( ~exist('Hkin','var')|| ~exist('Hkin_pmt','var')|| recomputeHkin || 0)
-    ModelFolder = fullfile(im.lfFolder,...
-        "20220610_1023_MT_mount_zen_30_m1HFN_FSM_");
+    ModelFolder = fullfile(im.lfFolder, FEM_LABEL);
     [Hkin, Hkin_pmtnodes] = compute_Hkin(ModelFolder);
     Hkin_pmt = [pmt1;pmt2]*Hkin_pmtnodes;
 end
@@ -81,18 +86,15 @@ Ts = t(2)-t(1);
 
 
 
-%% Check Hkin 00
-if(0)
-    load('HkinAZ_00_sim','HkinAZ_00_sim','HkinAZ_00_pmt');
-    load('HkinEL_00_sim','HkinEL_00_sim','HkinEL_00_pmt');
-
+%% Compare Hkin with the one from ODC
+if(false)
     load('Hkin_v20p9.mat', 'Hkin_za00_HcTp19');
     odcHkin = cell2mat(tfdata(Hkin_za00_HcTp19(4:end-1,:)));
-    figure(876)
-    subplot(211)
-    plot(1:21,HkinAZ_00_pmt,'s-',1:21,odcHkin(:,1),'o-.');
-    subplot(212)
-    plot(1:21,HkinEL_00_pmt,'s-',1:21,odcHkin(:,2),'o-.');
+    figure(figidx+800)
+    subplot(221), plotyy(1:14,-Hkin_pmt(1:14,1),1:14,odcHkin(1:14,1)); %#ok<*PLOTYY> 
+    subplot(222), plotyy(1:7,Hkin_pmt(15:21,1),1:7,odcHkin(1:7,1));
+    subplot(223), plotyy(1:14,-Hkin_pmt(1:14,2),1:14,odcHkin(1:14,2));
+    subplot(224), plotyy(1:7,Hkin_pmt(15:21,2),1:7,odcHkin(1:7,2));
 end
 
 
@@ -124,49 +126,55 @@ segtt = m1m2RBM * D_seg_tt';
 segp = m1m2RBM * D_seg_piston';
 segdp = segp - mean(segp,2);
 
-% nTrend = 0;
-% segtt = fun_detrend_v1(m1m2RBM * D_seg_tt', nTrend);
-% segp = m1m2RBM * D_seg_piston';
-% segdp = fun_detrend_v1(segp - mean(segp,2), nTrend);
-
 
 %% Apply Rejection Transfer Functions (RTFs)
 %%
 plot_rtf = false;
-rtf = oad_AOTT_rtf();
-rtfP = getRTF_DP();
-
+% rtf = oad_AOTT_rtf();
 hLtao = fun_rtf('LTAO', false, false);
-hLtaoP = fun_rtf('LTAOPiston', false, false);
+% rtfP = getRTF_DP(0);
+p_rtf_label = 'OIWFS125'; %'AGWS'; %
+switch p_rtf_label
+    case 'AGWS', rtfP = getRTF_DP(0);
+    case 'OIWFS10', rtfP = getRTF_DP(1,1/10,50e-3);
+    case 'OIWFS50', rtfP = getRTF_DP(1,1/50,10e-3);
+    case 'OIWFS125', rtfP = getRTF_DP(1,1/125,10e-3);
+end
+fprintf('LTAO piston RTF variant: %s\n',p_rtf_label);
 
-if 0
+if true
+    hLtaoP = fun_rtf('LTAOPiston', false, false);
     hbode = bodeoptions;
     hbode.FreqUnits = 'Hz'; hbode.grid = 'on';
-    figure(1);
-    subplot(1,2,1); bode(rtfP,hLtaoP,2*pi*logspace(-4,3,501),hbode);
-    subplot(1,2,2); impulse(pade(rtfP,18),pade(hLtaoP,18));
-    legend('GMTO','ODC'); grid on;
+    figure(figidx+110); w = 2*pi*logspace(-3,3,2001);
+%     subplot(1,2,1); 
+    bodemag(rtfP,getRTF_DP(1,1/50,20e-3),w,hbode);
+%     subplot(1,2,2); impulse(pade(rtfP,10),pade(getRTF_DP(1,1/50,20e-3),10));
+    legend('T_p = 1/50s, \tau_p = 10e-3','T_p = 1/50s, \tau_p = 20e-3'); grid on;
+    set(gca,'FontSize',12);
 end
 
 segttf = fun_applyRtfAndCut(t, segtt ,hLtao, 1:length(t));
-segdpf = fun_applyRtfAndCut(t, segdp ,hLtaoP, 1:length(t));
+% segdpf = fun_applyRtfAndCut(t, segdp ,hLtaoP, 1:length(t));
+segdpf = fun_applyRtfAndCut(t, segdp ,rtfP, 1:length(t));
 
 %% PMT
 
 % pmt1f = zeros(size(segtt,1),14);
 pmt1f = fun_applyRtfAndCut(t, pmt1pmt2(:,1:14) ,hLtao, 1:length(t));
-pmt2f = fun_applyRtfAndCut(t, pmt1pmt2(:,15:21) ,hLtaoP, 1:length(t));
+% pmt2f = fun_applyRtfAndCut(t, pmt1pmt2(:,15:21) ,hLtaoP, 1:length(t));
+pmt2f = fun_applyRtfAndCut(t, pmt1pmt2(:,15:21) ,rtfP, 1:length(t));
 
 
-%% PLOT
+%% Time-domain plots
 %%
 
 % PLot initial time instant
 t1 = 16;
 
 % GMTO LOM output plot
-if 1
-    figure(13) %#ok<*UNRCH>
+if 0
+    figure(figidx+15) %#ok<*UNRCH>
     set(gcf,'position',[123   230   640   400])
 %     segttp = [rad2mas*segttf,1e9*segdpf];
     segttp = [rad2mas*segtt,1e9*segdp];
@@ -186,8 +194,8 @@ if 1
 end
 
 % PMT output plot
-if 1
-    figure(14)
+if 0
+    figure(figidx+16)
     set(gcf,'position',[123   230   640   400])
 %     segttp = [1e3*pmt1f,1e9*pmt2f];
     segttp = [1e3*pmt1pmt2(:,1:14),1e9*pmt1pmt2(:,15:end)];
@@ -206,37 +214,136 @@ if 1
     legend boxoff
 end
 
-
-
+%% PSD plots
+%%
 if 0
-    figure(15)
-    set(gcf,'position',[123   230   1.3*640   400])
-    subplot(211)
-    plot(t,pmt1pmt2(:,15:21));
-    ylabel('Piston');
-    grid on; xlim([7, t(end)]);
+    % Length of data segment
+    M = 128;
+    nFFT = 4096;
+    detrend = 'none'; %'mean'; %
 
-    subplot(212)
-%     pmt1pmt2_ = [PMT1_DT,PMT2_DT];
-%     plot(t,pmt1pmt2_(:,15:21));
-    
-    plot(t,segdp);
-    ylabel('Piston no Hkin');
-    grid on; xlim([7, t(end)]);
-    
-    xlabel("Time (s)");
+    PpsdLOM = zeros(nFFT/2+1,7); PpsdLOMf = zeros(nFFT/2+1,7);
+    PpsdPMT = zeros(nFFT/2+1,7); PpsdPMTf = zeros(nFFT/2+1,7);
+    for ik = 1:7
+        [PpsdLOM(:,ik),freqP] = utils.pwelch(1e9*segdp(:,ik)...
+            ,2*M,[],nFFT,1/Ts,'onesided',detrend);
+        [PpsdPMT(:,ik),~] = utils.pwelch(1e9*pmt1pmt2(:,ik+14)...
+            ,2*M,[],nFFT,1/Ts,'onesided',detrend);
+        [PpsdLOMf(:,ik),~] = utils.pwelch(1e9*segdpf(:,ik)...
+            ,2*M,[],nFFT,1/Ts,'onesided',detrend);
+        [PpsdPMTf(:,ik),~] = utils.pwelch(1e9*pmt2f(:,ik)...
+            ,2*M,[],nFFT,1/Ts,'onesided',detrend);
+    end
+    segdp_rms = rms(segdp,2);
+    [PpsdLOM_rms,~] = utils.pwelch(1e9*segdp_rms...
+        ,2*M,[],nFFT,1/Ts,'onesided',detrend);
+%     segdpf_rms = rms(segdpf,2);
+
+    figure(figidx+17)
+    set(gcf,'position',[123   230   1.3*640   400])
+    subplot(121)
+    loglog(freqP,PpsdLOM,'-');
+    title("Segment Piston PSD (GMT-LOM)")
+    grid on; hold on; set(gca,'FontSize',12);
+%     loglog(freqP,PpsdLOMf,'--');
+    loglog(freqP,PpsdLOM_rms,'k--');
+    hold off;
+    xlabel('Frequency (Hz)')
+    ylabel('Seg Piston (nm^2/Hz)')
+    xlim([min(freqP) max(freqP)]); axis tight;
+%     legend("S1","S2","S3","S4","S5","S6","S7",...
+%         "S1","S2","S3","S4","S5","S6","S7",...
+%         'Location','southwest','NumColumns',2);
+    legend boxoff
+
+    subplot(122)
+    loglog(freqP,PpsdPMT,'-');
+    title("Segment Piston PSD (PMT2)")
+    grid on; hold on; set(gca,'FontSize',12);
+    loglog(freqP,PpsdPMTf,'--');
+    hold off;
+    xlabel('Frequency (Hz)')
+    ylabel('Seg Piston (nm^2/Hz)')
+    xlim([min(freqP) max(freqP)]); axis tight;
     legend("S1","S2","S3","S4","S5","S6","S7",...
-        'Location','southwest','Orientation','horizontal','NumColumns',7);
+        "S1","S2","S3","S4","S5","S6","S7",...
+        'Location','southwest','NumColumns',2);
+    legend boxoff
+end
+
+if(0)
+    size(rms(1e9*segdp,2))
+    % Length of data segment
+    M = 128;
+    nFFT = 4096;
+    detrend = 'none'; %'mean'; %
+
+    PpsdLOM = zeros(nFFT/2+1,7); PpsdLOMf = zeros(nFFT/2+1,7);
+    PpsdPMT = zeros(nFFT/2+1,7); PpsdPMTf = zeros(nFFT/2+1,7);
+    for ik = 1:7
+        [PpsdLOM(:,ik),freqP] = utils.pwelch(1e9*segdp(:,ik)...
+            ,2*M,[],nFFT,1/Ts,'onesided',detrend);
+        [PpsdPMT(:,ik),~] = utils.pwelch(1e9*pmt1pmt2(:,ik+14)...
+            ,2*M,[],nFFT,1/Ts,'onesided',detrend);
+    end
+
+    figure(figidx+17)
+    set(gcf,'position',[123   230   1.3*640   400])
+    subplot(121)
+    loglog(freqP,PpsdLOM,'-');
+    title("Segment Piston PSD (GMT-LOM)")
+    grid on; hold on; set(gca,'FontSize',12);
+    loglog(freqP,PpsdLOMf,'--');
+    hold off;
+    xlabel('Frequency (Hz)')
+    ylabel('Seg Piston (nm^2/Hz)')
+    xlim([min(freqP) max(freqP)]); axis tight;
+%     legend("S1","S2","S3","S4","S5","S6","S7",...
+%         "S1","S2","S3","S4","S5","S6","S7",...
+%         'Location','southwest','NumColumns',2);
+    legend boxoff
+
+    subplot(122)
+    loglog(freqP,PpsdPMT,'-');
+    title("Segment Piston PSD (PMT2)")
+    grid on; hold on; set(gca,'FontSize',12);
+    loglog(freqP,PpsdPMTf,'--');
+    hold off;
+    xlabel('Frequency (Hz)')
+    ylabel('Seg Piston (nm^2/Hz)')
+    xlim([min(freqP) max(freqP)]); axis tight;
+    legend("S1","S2","S3","S4","S5","S6","S7",...
+        "S1","S2","S3","S4","S5","S6","S7",...
+        'Location','southwest','NumColumns',2);
     legend boxoff
 end
 
 
+%% RTF comparison plots
+%%
+
+if true
+    AGWSrtf = getRTF_DP(0);
+    OIWFS10rtf = getRTF_DP(1,1/10,50e-3);
+    OIWFS50rtf = getRTF_DP(1,1/50,10e-3);
+    OIWFS125rtf = getRTF_DP(1,1/125,10e-3);
+    hbode = bodeoptions;
+    hbode.FreqUnits = 'Hz'; hbode.grid = 'on';
+    hbode.Title.String = ''; hbode.XLabel.FontSize = 12;
+    hbode.YLabel.FontSize = 12; hbode.TickLabel.FontSize = 12;    
+    figure(111);
+    bodemag(AGWSrtf,OIWFS10rtf,OIWFS50rtf,OIWFS125rtf,...
+        2*pi*logspace(-3,3,501),hbode);
+    legend('AGWS RTF','OIWFS-10 RTF','OIWFS-50 RTF','OIWFS-125 RTF',...
+        'Location','southeast'); legend boxoff;
+end
+
 %% WFE
 kt1 = 25*(1/Ts);
 [wfe,TTwfe,Pwfe] = calc_WFE(rad2mas*segttf(kt1:end,:), 1e9*segdpf(kt1:end,:));
-fprintf('GMTO-LOM: %.3gnm\t%.3gnm\t%.3gnm\t\n',TTwfe,Pwfe,wfe);
+fprintf('GMTO-LOM: %.2gnm\t%.3gnm\t%.3gnm\t\n',TTwfe,Pwfe,wfe);
 [wfe_,TTwfe_,Pwfe_] = calc_WFE(1e3*pmt1f(kt1:end,:), 1e9*pmt2f(kt1:end,:));
-fprintf('PMT-WFE: %.3gnm\t%.3gnm\t%.3gnm\t\n',TTwfe_,Pwfe_,wfe_);
+fprintf('PMT-WFE: %.2gnm\t%.3gnm\t%.3gnm\t\n',TTwfe_,Pwfe_,wfe_);
 
 % [wfe_,TTwfe_,Pwfe_] = calc_WFE(1e3*fun_detrend_v1(pmt1f(kt1:end,:),1),...
 %     1e9*fun_detrend_v1(pmt2f(kt1:end,:),1));
@@ -260,7 +367,7 @@ return
 
 load(fullfile('/Users/rromano/Workspace/mnt-odc/2022-12-20_ODC E2E Files',...
     'res_eval/tracking/input/v20.9/tj',...
-    'HcTp19/za30_v20.9_HcTp19_wlc0_tj101_nl1.mat'),'r');
+    'HbTp19/za30_v20.9_HbTp19_wlc0_tj101_nl1.mat'),'r');
 
 %% Mount TO/PO ODC-GMTO comparison
 
@@ -369,8 +476,8 @@ else
 end
 
 wfeTT = 10.2* sqrt((1/7/N)* sum((segTT - mean(segTT,2)).^2,'all'));
-% wfeP = 1e9*sqrt((1/7/N)* sum((segPiston - mean(segPiston,2)).^2,'all'));
 
+% wfeP = sqrt((1/7/N)* sum((segPiston - mean(segPiston,2)).^2,'all'));
 piston_vRMS = fun_calcSimpleRms(segPiston);
 wfeP = sqrt(sum(piston_vRMS.^2)/7);
 info = 'Rtf Piston [nm] = [%.2f %.2f %.2f %.2f %.2f %.2f %.2f] => RMS=%.2f';
@@ -396,7 +503,6 @@ mntAZ_out = outputTable{'OSS_AzEncoder_Angle',"indices"}{1};
 mntEL_out = outputTable{'OSS_ElEncoder_Angle',"indices"}{1};
 mntGIR_out = outputTable{'OSS_RotEncoder_Angle',"indices"}{1};
 
-
 Phi = modalDisp2Outputs;
 
 Phi_mnt_enc = [mean(Phi(mntAZ_out,1:3),1);...
@@ -411,7 +517,7 @@ end
 %% Auxiliar functions providing the LTAO RTFs
 %%
 % Function to compute the GLAO RTF (according to REQ-L3-OAD-35398)
-function [rtf,L] = oad_AOTT_rtf()
+function [rtf,L] = oad_AOTT_rtf() %#ok<DEFNU> 
 
 % LTAO RTF (according to REQ-L3-OAD-35398)
 fz = 800;       % ASM closed-loop bandwidth (Hz)
@@ -430,22 +536,34 @@ rtf = 1/(1 + L);
 end
 
 %% Function to compute the differential piston RTF
-%% GMT-REQ-00506 (Rev.L) - Eq.(3.2)
-function RTF_DP = getRTF_DP()
-    
+%%
+function RTF_DP = getRTF_DP(rtf_variant,Tp,taup)
+% rtf_variant == 0 -> GMT-REQ-00506 (Rev.L) - Eq.(3.2)
+% rtf_variant == 1 => OIWFS variants
 s=tf('s');
 
-omz = 800*2*pi;     % ASM closed-loop bandwidth (Hz)
-dz = .75;           % ASM control loop damping
-Tp = 30;            % Optical Piston sensor Integration time
-taup= 6/1000;       % Optical piston sensor latency
-gpi = .5;           % Optical piston feedback integrator gain
-Te = 2/1000;        % Edge sensor integration time
-taue = .1/1000;     % Edge sensor latency
-geff = .8;          % Edge sensor feedforward gain
+if(nargin < 1), rtf_variant = 0; end
+% Optical Piston sensor Integration time
+if(nargin < 2 && ~rtf_variant), Tp = 30; end
+if(nargin < 2 && rtf_variant), Tp = 100e-3; end
+% Optical piston sensor latency
+if(nargin < 3 && ~rtf_variant), taup= 6e-3; end
+if(nargin < 3 && rtf_variant), taup= 50e-3; end
+
+% Edge sensor latency
+switch rtf_variant
+    case 0, taue = .1/1000;      % AGWS RTF
+    otherwise, taue = .2e-3;     % OIWFS RTF
+end
+        
+omz = 800*2*pi; % ASM closed-loop bandwidth (Hz)
+dz = .75;       % ASM control loop damping
+gpi = .5;       % Optical piston feedback integrator gain
+Te = 2e-3;      % Edge sensor integration time
+geff = .8;      % Edge sensor feedforward gain
 
 num = 1 + omz^2*geff*exp(-taue*s)*(exp(-Te*s)-1)/(Te*s*    (omz^2+2*omz*dz*s+s^2) );
-den = 1 - omz^2*gpi*exp(-taup*s)*(exp(-Tp*s)-1)/(Tp^2*s^2*(omz^2+2*omz*dz*s+s^2) );
+den = 1 - omz^2*gpi *exp(-taup*s)*(exp(-Tp*s)-1)/(Tp^2*s^2*(omz^2+2*omz*dz*s+s^2) );
 RTF_DP = num/den;
     
 end
@@ -515,7 +633,7 @@ function X=fun_applyRtfAndCut(t0_,X,hRtf,vn)
 %fun_applyRtfAndCut Apply RTF to all columns and truncate according to index vector vn
     m=size(X,2); Hrtf=ss(zeros(m,m)); 
     for k=1:m, Hrtf(k,k) = hRtf; end
-    X = lsim(Hrtf,X,t0_,'foh');
+    X = lsim(Hrtf,X,t0_,[],'foh');
     X=X(vn,:);
 end
 
