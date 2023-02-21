@@ -1,4 +1,15 @@
+*.toc
+*.snm
+*.nav
+*.log
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+
 *.asv
 tj10*.mat
 *_comparison.png
 tj10*_deriv.png
+res_summary/*-eps-converted-to.pdf
+res_summary/tj101-3_piston_rtf_effect.pdf
